@@ -1,0 +1,139 @@
+import time
+from datetime import datetime, timedelta
+from binance_dootiger_bot.common.config import Config
+from binance_dootiger_bot.common.logger import Logger
+from binance_dootiger_bot.common.common_util import CommonUtil
+from .strategies import get_strategy
+from binance_dootiger_bot.service.binance_doobot_manager import MockDatabase, MockBinanceManager
+
+from binance_dootiger_bot.common.scheduler import SafeScheduler
+
+
+class DoobotTrading:
+    def __init__(self, config: Config = None,):
+        self.config = config or Config()
+        self.db = MockDatabase(self.config)
+        self.logger = Logger("doobot_trading", self.db)
+        self.manager = MockBinanceManager(self.config, self.db, self.logger,)
+
+        self.logger1 = Logger("doobot_trading", self.db)
+        self.logger2 = Logger("doobot_trading", self.db)
+        self.logger3 = Logger("doobot_trading", self.db)
+        self.logger4 = Logger("doobot_trading", self.db)
+        self.logger5 = Logger("doobot_trading", self.db)
+        self.logger6 = Logger("doobot_trading", self.db)
+
+    def update_coin_data_history(self, start_date: datetime = None, end_date: datetime = None,):
+        for coin in self.config.SUPPORTED_COIN_LIST:
+            loop_date = start_date
+            while True:
+            ## 1분봉 데이터 Insert - 가격조회하여 실시간으로 가지고옴
+                self.manager.set_ticker_price(coin + self.config.BRIDGE.symbol, loop_date)
+                if loop_date >= end_date - timedelta(minutes=1):  # 마지막으로 완성된 1분 전 봉 값만 적용
+                    print("break!!!!!!!!!!")
+                    break
+                time.sleep(0.01)
+                loop_date = loop_date + timedelta(minutes=1)
+
+    def update_coin_data(self):
+        self.logger.warning(f"**** {datetime.now()} ****")
+        for coin in self.config.SUPPORTED_COIN_LIST:
+            self.manager.set_ticker_price(coin + self.config.BRIDGE.symbol)
+
+    def start_doobot_trading(self):
+        self.logger.info("start_doobot_trading Starting!!!!!!!!!!!")
+
+        # check if we can access API feature that require valid config
+        try:
+            _ = self.manager.get_account()   ## 바이낸스 현재 계좌정보 가지고오기
+        except Exception as e:  # pylint: disable=broad-except
+            self.logger.error("Couldn't access Binance API - API keys may be wrong or lack sufficient permissions")
+            self.logger.error(e)
+            return
+
+        # doobotx01 전략 셋팅
+        strategy1_nm = "doobotx01"
+        strategy1 = get_strategy(strategy1_nm)
+        if strategy1 is None:
+            self.logger.error("Invalid strategy name")
+            return
+        self.logger1.set_strategy_name(strategy1_nm)
+        trader1 = strategy1(self.manager, self.db, self.logger1, self.config)
+        trader1.initialize()
+
+        # doobotx02 전략 셋팅
+        strategy2_nm = "doobotx02"
+        strategy2 = get_strategy(strategy2_nm)
+        if strategy2 is None:
+            self.logger.error("Invalid strategy name")
+            return
+        self.logger2.set_strategy_name(strategy2_nm)
+        trader2 = strategy2(self.manager, self.db, self.logger2, self.config)
+        trader2.initialize()
+
+        # doobotx03 전략 셋팅
+        strategy3_nm = "doobotx03"
+        strategy3 = get_strategy(strategy3_nm)
+        if strategy3 is None:
+            self.logger.error("Invalid strategy name")
+            return
+        self.logger3.set_strategy_name(strategy3_nm)
+        trader3 = strategy3(self.manager, self.db, self.logger3, self.config)
+        trader3.initialize()
+
+        # doobotx04 전략 셋팅
+        strategy4_nm = "doobotx04"
+        strategy4 = get_strategy(strategy4_nm)
+        if strategy4 is None:
+            self.logger.error("Invalid strategy name")
+            return
+        self.logger4.set_strategy_name(strategy4_nm)
+        trader4 = strategy4(self.manager, self.db, self.logger4, self.config)
+        trader4.initialize()
+
+        # doobotx05 전략 셋팅
+        strategy5_nm = "doobotx05"
+        strategy5 = get_strategy(strategy5_nm)
+        if strategy5 is None:
+            self.logger.error("Invalid strategy name")
+            return
+        self.logger5.set_strategy_name(strategy5_nm)
+        trader5 = strategy5(self.manager, self.db, self.logger5, self.config)
+        trader5.initialize()
+
+        # doobotx06 전략 셋팅
+        strategy6_nm = "doobotx06"
+        strategy6 = get_strategy(strategy6_nm)
+        if strategy6 is None:
+            self.logger.error("Invalid strategy name")
+            return
+        self.logger6.set_strategy_name(strategy6_nm)
+        trader6 = strategy6(self.manager, self.db, self.logger6, self.config)
+        trader6.initialize()
+
+        schedule = SafeScheduler(self.logger)
+
+        # 5분마나 돌게 셋팅
+        for i in range(12):
+            minute = 5 * i
+            minut_str = CommonUtil.integer_to_string_n(minute, 2)
+            schedule.every().hours.at(minut_str+":01").do(trader1.scout)
+            schedule.every().hours.at(minut_str+":04").do(trader2.scout)
+            schedule.every().hours.at(minut_str+":07").do(trader3.scout)
+            schedule.every().hours.at(minut_str+":10").do(trader4.scout)
+            schedule.every().hours.at(minut_str+":13").do(trader5.scout)
+            schedule.every().hours.at(minut_str+":16").do(trader6.scout)
+
+        schedule.every(5).seconds.do(trader1.scout_realtime)
+        schedule.every(5).seconds.do(trader2.scout_realtime)
+        schedule.every(5).seconds.do(trader3.scout_realtime)
+        schedule.every(5).seconds.do(trader4.scout_realtime)
+        schedule.every(5).seconds.do(trader5.scout_realtime)
+        schedule.every(5).seconds.do(trader6.scout_realtime)
+        try:
+            while True:
+                schedule.run_pending()
+                time.sleep(1)
+        finally:
+            self.manager.stream_manager.close()
+
